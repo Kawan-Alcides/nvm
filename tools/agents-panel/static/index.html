@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel de Agentes</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='14' font-size='14'%3E🛰%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    /* Tokens de tema. Ao portar para outro projeto, troque só este bloco pelas
+    variáveis de tema que o projeto já tem. Nenhuma cor é escrita diretamente no
+    desenho — tudo passa por var(). */
+    --ap-bg: #0d1117;
+    --ap-surface: #161b22;
+    --ap-surface-2: #1c2430;
+    --ap-border: #2b3441;
+    --ap-text: #e6edf3;
+    --ap-muted: #8b949e;
+    --ap-core: #58a6ff;
+
+    --ap-ok: #3fb950;
+    --ap-stale: #d29922;
+    --ap-error: #f85149;
+    --ap-idle: #6e7681;
+    --ap-off: #424a53;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ap-bg);
+    color: var(--ap-text);
+    font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    overflow-x: hidden;
+  }
+
+  .ap-wrap { max-width: 1400px; margin: 0 auto; padding: 20px 16px 48px; }
+
+  .ap-head { margin-bottom: 8px; }
+  .ap-head h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: .02em; }
+  .ap-head p { margin: 0; color: var(--ap-muted); font-size: 13px; }
+
+  .ap-banner {
+    margin: 14px 0 18px;
+    padding: 10px 14px;
+    border: 1px solid var(--ap-border);
+    border-left: 3px solid var(--ap-stale);
+    border-radius: 6px;
+    background: var(--ap-surface);
+    color: var(--ap-muted);
+    font-size: 12.5px;
+  }
+  .ap-banner strong { color: var(--ap-text); }
+
+  .ap-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+  }
+
+  .ap-stage {
+    background: var(--ap-surface);
+    border: 1px solid var(--ap-border);
+    border-radius: 10px;
+    padding: 6px;
+    min-width: 0;
+  }
+  .ap-stage svg { display: block; width: 100%; height: auto; }
+
+  .ap-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+
+  .ap-card {
+    background: var(--ap-surface);
+    border: 1px solid var(--ap-border);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .ap-card h2 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .09em;
+    color: var(--ap-muted);
+    margin: 0 0 10px;
+    font-weight: 600;
+  }
+
+  .ap-summary { display: flex; gap: 10px; flex-wrap: wrap; }
+  .ap-chip {
+    flex: 1 1 auto;
+    min-width: 92px;
+    background: var(--ap-surface-2);
+    border: 1px solid var(--ap-border);
+    border-radius: 8px;
+    padding: 9px 11px;
+  }
+  .ap-chip b { display: block; font-size: 21px; line-height: 1.15; font-weight: 650; }
+  .ap-chip span { font-size: 11.5px; color: var(--ap-muted); }
+  .ap-chip[data-kind="ok"] b { color: var(--ap-ok); }
+  .ap-chip[data-kind="atencao"] b { color: var(--ap-stale); }
+  .ap-chip[data-kind="off"] b { color: var(--ap-muted); }
+
+  .ap-empty { color: var(--ap-muted); font-size: 13px; margin: 0; }
+
+  .ap-detail-name { font-size: 16px; font-weight: 650; margin: 0 0 2px; }
+  .ap-detail-state { font-size: 12.5px; margin: 0 0 10px; font-weight: 600; }
+  .ap-detail-faz { color: var(--ap-muted); margin: 0 0 12px; font-size: 13px; }
+
+  .ap-rows { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 5px 12px; font-size: 13px; }
+  .ap-rows dt { color: var(--ap-muted); white-space: nowrap; }
+  .ap-rows dd { margin: 0; overflow-wrap: anywhere; }
+
+  .ap-run {
+    margin-top: 14px;
+    width: 100%;
+    padding: 9px 12px;
+    font: inherit;
+    font-weight: 600;
+    color: var(--ap-text);
+    background: var(--ap-surface-2);
+    border: 1px solid var(--ap-border);
+    border-radius: 7px;
+    cursor: pointer;
+  }
+  .ap-run:hover:not(:disabled) { border-color: var(--ap-core); color: var(--ap-core); }
+  .ap-run:disabled { opacity: .55; cursor: progress; }
+  .ap-run-note { margin: 8px 0 0; font-size: 12px; color: var(--ap-muted); }
+  .ap-run-note[data-tone="error"] { color: var(--ap-error); }
+  .ap-run-note[data-tone="ok"] { color: var(--ap-ok); }
+
+  .ap-list { list-style: none; margin: 0; padding: 0; }
+  .ap-list li { border-top: 1px solid var(--ap-border); }
+  .ap-list li:first-child { border-top: 0; }
+  .ap-list button {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    padding: 8px 6px;
+    background: none;
+    border: 0;
+    border-radius: 6px;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .ap-list button:hover { background: var(--ap-surface-2); }
+  .ap-list button[aria-pressed="true"] { background: var(--ap-surface-2); box-shadow: inset 2px 0 0 var(--ap-core); }
+  .ap-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .ap-list-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ap-list-state { font-size: 11.5px; color: var(--ap-muted); flex: none; }
+
+  /* Cores por estado, reutilizadas em SVG e HTML. */
+  [data-state="ok"] .ap-dot, .ap-dot[data-state="ok"] { background: var(--ap-ok); }
+  [data-state="stale"] .ap-dot, .ap-dot[data-state="stale"] { background: var(--ap-stale); }
+  [data-state="error"] .ap-dot, .ap-dot[data-state="error"] { background: var(--ap-error); }
+  [data-state="idle"] .ap-dot, .ap-dot[data-state="idle"] { background: var(--ap-idle); }
+  [data-state="off"] .ap-dot, .ap-dot[data-state="off"] { background: var(--ap-off); }
+
+  .ap-node { cursor: pointer; }
+  .ap-node:focus { outline: none; }
+  .ap-node:focus-visible .ap-hex { stroke: var(--ap-core); stroke-width: 2.5; }
+
+  .ap-hex { stroke: var(--ap-bg); stroke-width: 1.5; }
+  .ap-node[data-state="ok"] .ap-hex { fill: var(--ap-ok); }
+  .ap-node[data-state="stale"] .ap-hex { fill: var(--ap-stale); }
+  .ap-node[data-state="error"] .ap-hex { fill: var(--ap-error); }
+  .ap-node[data-state="idle"] .ap-hex { fill: var(--ap-idle); }
+  .ap-node[data-state="off"] .ap-hex { fill: var(--ap-off); }
+
+  .ap-arc { fill: none; stroke-width: 3; stroke-linecap: round; }
+  .ap-node[data-state="ok"] .ap-arc { stroke: var(--ap-ok); }
+  .ap-node[data-state="stale"] .ap-arc { stroke: var(--ap-stale); }
+  .ap-node[data-state="error"] .ap-arc { stroke: var(--ap-error); }
+  .ap-node[data-state="idle"] .ap-arc { stroke: var(--ap-idle); }
+  .ap-node[data-state="off"] .ap-arc { stroke: var(--ap-off); }
+
+  .ap-arc-bg { fill: none; stroke: var(--ap-border); stroke-width: 3; opacity: .55; }
+  .ap-ray { stroke: var(--ap-core); stroke-width: 1; opacity: .12; }
+
+  .ap-icon { font-size: 17px; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+  .ap-node-name {
+    font-size: 11px; font-weight: 650; letter-spacing: .03em;
+    text-anchor: middle; fill: var(--ap-text); pointer-events: none;
+  }
+  .ap-node-metric { font-size: 10px; text-anchor: middle; fill: var(--ap-muted); pointer-events: none; }
+  .ap-node[aria-selected="true"] .ap-node-name { fill: var(--ap-core); }
+
+  .ap-core-hex { fill: var(--ap-surface-2); stroke: var(--ap-core); stroke-width: 2; }
+  .ap-core-ring { fill: none; stroke: var(--ap-core); stroke-width: 1.2; }
+  .ap-core-flash { fill: none; stroke: var(--ap-core); stroke-width: 2; }
+  .ap-core-label {
+    font-size: 10px; font-weight: 700; letter-spacing: .12em;
+    text-anchor: middle; dominant-baseline: central; fill: var(--ap-core);
+  }
+  .ap-pulse { fill: var(--ap-ok); }
+
+  @media (max-width: 900px) {
+    .ap-grid { grid-template-columns: minmax(0, 1fr); }
+    /* O viewBox encolhe o SVG inteiro; sem isto, um rótulo de 11px vira ~4px no
+    celular. A lista lateral continua carregando a informação completa, então o
+    texto secundário some em vez de virar borrão. */
+    .ap-node-name { font-size: 26px; }
+    .ap-node-metric { display: none; }
+    .ap-icon { font-size: 26px; }
+    .ap-core-label { font-size: 20px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ap-pulse { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="ap-wrap">
+  <header class="ap-head">
+    <h1>🛰 Painel de Agentes</h1>
+    <p>Constelação viva dos processos autônomos — a animação é o dado.</p>
+  </header>
+
+  <p class="ap-banner">
+    <strong>Protótipo.</strong> Este repositório (nvm) tem <strong>um</strong> processo
+    agendado de verdade: a varredura semanal do CodeQL
+    (<code>.github/workflows/codeql-analysis.yml</code>, <code>cron '0 17 * * 4'</code>).
+    Os demais agentes têm cadência <strong>simulada</strong>, mas fazem trabalho local
+    real sobre este repositório e gravam prova de vida real em disco — nenhuma métrica
+    exibida é inventada.
+  </p>
+
+  <div class="ap-grid">
+    <div class="ap-stage">
+      <svg id="ap-svg" viewBox="0 0 900 600" role="img" aria-label="Constelação de agentes autônomos"></svg>
+    </div>
+
+    <aside class="ap-side">
+      <section class="ap-card">
+        <h2>Resumo</h2>
+        <div class="ap-summary" id="ap-summary"></div>
+      </section>
+
+      <section class="ap-card" id="ap-detail-card">
+        <h2>Detalhe</h2>
+        <div id="ap-detail"></div>
+      </section>
+
+      <section class="ap-card">
+        <h2>Todos os agentes</h2>
+        <ul class="ap-list" id="ap-list"></ul>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var SVG_NS = 'http://www.w3.org/2000/svg';
+  var CX = 450, CY = 300, RX = 320, RY = 205;
+  var NODE_R = 21, ARC_R = 30;
+  var ARC_C = 2 * Math.PI * ARC_R;
+  var POLL_MS = 15000;
+
+  var STATE_LABEL = {
+    ok: 'em dia',
+    stale: 'atrasado',
+    error: 'com erro',
+    idle: 'nunca rodou',
+    off: 'desligado'
+  };
+
+  var svg = document.getElementById('ap-svg');
+  var summaryEl = document.getElementById('ap-summary');
+  var detailEl = document.getElementById('ap-detail');
+  var listEl = document.getElementById('ap-list');
+
+  var snap = null;          // último snapshot recebido do servidor
+  var snapAt = 0;           // performance.now() do instante do fetch
+  var nodes = new Map();    // id -> refs de elementos SVG
+  var selectedId = null;
+  var pulses = [];
+  var coreFlash = 0;
+  var running = new Set();
+  var built = false;
+  var rafId = 0;
+  var pollTimer = 0;
+  var lastFrame = 0;
+  var ringAngles = [0, 0, 0];
+  var clockTick = 0;
+  var coreEls = {};
+
+  /* ---------- formatação humana ---------- */
+
+  function num(value, casas) {
+    return value.toFixed(casas).replace('.', ',');
+  }
+
+  function formatAgo(min) {
+    if (min == null) return '—';
+    if (min < 1) return 'agora mesmo';
+    if (min < 60) return 'há ' + Math.round(min) + ' min';
+    if (min < 1440) return 'há ' + num(min / 60, 1) + ' h';
+    return 'há ' + num(min / 1440, 1) + ' d';
+  }
+
+  function formatIn(min) {
+    if (min == null) return '—';
+    if (min <= 0) return 'a qualquer momento';
+    if (min < 60) return 'em ' + Math.round(min) + ' min';
+    if (min < 1440) return 'em ' + num(min / 60, 1) + ' h';
+    return 'em ' + num(min / 1440, 1) + ' d';
+  }
+
+  function formatCadence(min) {
+    if (min == null) return 'contínuo';
+    if (min < 60) return min + ' em ' + min + ' min';
+    if (min === 60) return 'de hora em hora';
+    if (min < 1440) return num(min / 60, 1) + ' em ' + num(min / 60, 1) + ' h';
+    if (min === 1440) return '1× por dia';
+    if (min === 10080) return '1× por semana';
+    return 'a cada ' + num(min / 1440, 1) + ' dias';
+  }
+
+  /* ---------- idade viva (armadilha 2) ----------
+  O snapshot envelhece entre um fetch e outro. Desenhar o `phase` que veio do
+  servidor congelaria o arco por 15 s e daria saltos. Guardamos o relógio do
+  fetch e somamos o tempo de parede decorrido a cada quadro. */
+
+  function liveAge(agent) {
+    if (agent.age_min == null) return null;
+    return agent.age_min + (performance.now() - snapAt) / 60000;
+  }
+
+  function livePhase(agent) {
+    if (!agent.every_min) return null;
+    var age = liveAge(agent);
+    if (age == null) return null;
+    return Math.min(1, age / agent.every_min);
+  }
+
+  function liveNextIn(agent) {
+    if (!agent.every_min) return null;
+    var age = liveAge(agent);
+    if (age == null) return null;
+    return Math.max(0, agent.every_min - age);
+  }
+
+  /* ---------- construção do SVG ---------- */
+
+  function el(name, attrs) {
+    var node = document.createElementNS(SVG_NS, name);
+    for (var key in attrs) node.setAttribute(key, attrs[key]);
+    return node;
+  }
+
+  function hexPoints(r) {
+    var pts = [];
+    for (var k = 0; k < 6; k++) {
+      var a = (-90 + k * 60) * Math.PI / 180;
+      pts.push((r * Math.cos(a)).toFixed(2) + ',' + (r * Math.sin(a)).toFixed(2));
+    }
+    return pts.join(' ');
+  }
+
+  function buildCore() {
+    var g = el('g', { transform: 'translate(' + CX + ',' + CY + ')' });
+    coreEls.flash = el('circle', { class: 'ap-core-flash', r: 46, opacity: 0 });
+    g.appendChild(coreEls.flash);
+    coreEls.rings = [58, 76, 94].map(function (r, i) {
+      var ring = el('circle', {
+        class: 'ap-core-ring', r: r,
+        'stroke-dasharray': (i === 1 ? '10 16' : '4 12'),
+        opacity: 0.4
+      });
+      g.appendChild(ring);
+      return ring;
+    });
+    coreEls.hex = el('polygon', { class: 'ap-core-hex', points: hexPoints(40) });
+    g.appendChild(coreEls.hex);
+    g.appendChild(el('text', { class: 'ap-core-label' })).textContent = 'NVM';
+    svg.appendChild(g);
+  }
+
+  function buildNodes(agents) {
+    // Empilhamento: raios ao fundo, depois o núcleo, os pulsos por cima dele
+    // e os nós na frente de tudo.
+    var raysLayer = el('g', {});
+    var nodesLayer = el('g', {});
+    svg.insertBefore(raysLayer, svg.firstChild);
+    coreEls.pulseLayer = el('g', {});
+    svg.appendChild(coreEls.pulseLayer);
+    svg.appendChild(nodesLayer);
+
+    agents.forEach(function (agent, i) {
+      var a = (-90 + i * (360 / agents.length)) * Math.PI / 180;
+      var x = CX + RX * Math.cos(a);
+      var y = CY + RY * Math.sin(a);
+
+      var ray = el('line', { class: 'ap-ray', x1: CX, y1: CY, x2: x, y2: y });
+      raysLayer.appendChild(ray);
+
+      var g = el('g', {
+        class: 'ap-node', tabindex: '0', role: 'button',
+        'data-state': agent.state, 'aria-selected': 'false'
+      });
+      var title = el('title', {});
+      g.appendChild(title);
+
+      var body = el('g', { transform: 'translate(' + x.toFixed(1) + ',' + y.toFixed(1) + ')' });
+      body.appendChild(el('circle', { class: 'ap-arc-bg', r: ARC_R }));
+      var arc = el('circle', { class: 'ap-arc', r: ARC_R, transform: 'rotate(-90)' });
+      body.appendChild(arc);
+
+      var hexWrap = el('g', {});
+      hexWrap.appendChild(el('polygon', { class: 'ap-hex', points: hexPoints(NODE_R) }));
+      var icon = el('text', { class: 'ap-icon', y: 1 });
+      icon.textContent = agent.icon || '•';
+      hexWrap.appendChild(icon);
+      body.appendChild(hexWrap);
+      g.appendChild(body);
+
+      var name = el('text', { class: 'ap-node-name', x: x.toFixed(1), y: (y + 47).toFixed(1) });
+      name.textContent = agent.nome;
+      g.appendChild(name);
+
+      var metric = el('text', { class: 'ap-node-metric', x: x.toFixed(1), y: (y + 62).toFixed(1) });
+      g.appendChild(metric);
+
+      nodesLayer.appendChild(g);
+
+      function toggle() { select(selectedId === agent.id ? null : agent.id); }
+      g.addEventListener('click', toggle);
+      g.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(); }
+      });
+
+      nodes.set(agent.id, {
+        group: g, ray: ray, arc: arc, hexWrap: hexWrap,
+        title: title, metric: metric,
+        x: x, y: y, emitAcc: Math.random() * 1.5
+      });
+    });
+  }
+
+  /* ---------- painel lateral ---------- */
+
+  function renderSummary() {
+    var r = snap.resumo;
+    summaryEl.innerHTML = '';
+    [['ok', r.ok, 'em dia'], ['atencao', r.atencao, 'pedem atenção'], ['off', r.off, 'desligados']]
+      .forEach(function (row) {
+        var chip = document.createElement('div');
+        chip.className = 'ap-chip';
+        chip.setAttribute('data-kind', row[0]);
+        var b = document.createElement('b');
+        b.textContent = row[1];
+        var span = document.createElement('span');
+        span.textContent = row[2];
+        chip.appendChild(b);
+        chip.appendChild(span);
+        summaryEl.appendChild(chip);
+      });
+  }
+
+  function renderList() {
+    listEl.innerHTML = '';
+    snap.agents.forEach(function (agent) {
+      var li = document.createElement('li');
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.setAttribute('aria-pressed', String(selectedId === agent.id));
+
+      var dot = document.createElement('span');
+      dot.className = 'ap-dot';
+      dot.setAttribute('data-state', agent.state);
+
+      var nameEl = document.createElement('span');
+      nameEl.className = 'ap-list-name';
+      nameEl.textContent = agent.nome;
+
+      var stateEl = document.createElement('span');
+      stateEl.className = 'ap-list-state';
+      stateEl.textContent = STATE_LABEL[agent.state] || agent.state;
+
+      btn.appendChild(dot);
+      btn.appendChild(nameEl);
+      btn.appendChild(stateEl);
+      btn.addEventListener('click', function () {
+        select(selectedId === agent.id ? null : agent.id);
+      });
+      li.appendChild(btn);
+      listEl.appendChild(li);
+    });
+  }
+
+  function row(dl, label, value) {
+    var dt = document.createElement('dt');
+    dt.textContent = label;
+    var dd = document.createElement('dd');
+    dd.textContent = value;
+    dl.appendChild(dt);
+    dl.appendChild(dd);
+  }
+
+  function renderDetail() {
+    detailEl.innerHTML = '';
+    var agent = selectedId ? findAgent(selectedId) : null;
+    if (!agent) {
+      var p = document.createElement('p');
+      p.className = 'ap-empty';
+      p.textContent = 'Clique num agente da constelação ou da lista.';
+      detailEl.appendChild(p);
+      return;
+    }
+
+    var h = document.createElement('p');
+    h.className = 'ap-detail-name';
+    h.textContent = agent.icon + '  ' + agent.nome;
+    detailEl.appendChild(h);
+
+    var st = document.createElement('p');
+    st.className = 'ap-detail-state';
+    st.textContent = STATE_LABEL[agent.state] || agent.state;
+    st.style.color = 'var(--ap-' + agent.state + ')';
+    detailEl.appendChild(st);
+
+    var faz = document.createElement('p');
+    faz.className = 'ap-detail-faz';
+    faz.textContent = agent.faz;
+    detailEl.appendChild(faz);
+
+    var dl = document.createElement('dl');
+    dl.className = 'ap-rows';
+    row(dl, 'Cadência', formatCadence(agent.every_min));
+    row(dl, 'Última rodada', formatAgo(liveAge(agent)));
+    if (agent.every_min) row(dl, 'Próxima', formatIn(liveNextIn(agent)));
+    if (agent.metric) row(dl, 'Resultado', agent.metric);
+    if (agent.detail) row(dl, 'Nota', agent.detail);
+    row(dl, 'Estado mora em', agent.arquivo);
+    detailEl.appendChild(dl);
+
+    // O ISO cru fica no atributo, não na cara do usuário.
+    if (agent.last) dl.setAttribute('data-last-iso', agent.last);
+
+    if (agent.run) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ap-run';
+      var isRunning = running.has(agent.id);
+      btn.disabled = isRunning;
+      btn.textContent = isRunning ? '⏳ rodando…' : '▶ rodar agora';
+      btn.addEventListener('click', function () { runNow(agent); });
+      detailEl.appendChild(btn);
+
+      var note = document.createElement('p');
+      note.className = 'ap-run-note';
+      note.id = 'ap-run-note';
+      note.textContent = isRunning
+        ? 'Disparado. Pode demorar alguns segundos.'
+        : 'Dispara ' + agent.run.method + ' ' + agent.run.url;
+      detailEl.appendChild(note);
+    }
+  }
+
+  function findAgent(id) {
+    if (!snap) return null;
+    for (var i = 0; i < snap.agents.length; i++) {
+      if (snap.agents[i].id === id) return snap.agents[i];
+    }
+    return null;
+  }
+
+  function select(id) {
+    selectedId = id;
+    nodes.forEach(function (ref, nodeId) {
+      var isSel = nodeId === id;
+      ref.group.setAttribute('aria-selected', String(isSel));
+      // O raio do selecionado acende; é estrutura, então some de novo depois.
+      ref.ray.setAttribute('opacity', isSel ? '0.45' : '0.12');
+    });
+    renderList();
+    renderDetail();
+  }
+
+  /* ---------- rede ---------- */
+
+  function applySnapshot(data) {
+    snap = data;
+    snapAt = performance.now();
+
+    if (!built) {
+      // O núcleo entra primeiro para que buildNodes consiga empilhar os raios
+      // atrás dele e os pulsos na frente.
+      buildCore();
+      buildNodes(snap.agents);
+      built = true;
+    }
+
+    snap.agents.forEach(function (agent) {
+      var ref = nodes.get(agent.id);
+      if (!ref) return;
+      ref.group.setAttribute('data-state', agent.state);
+      ref.metric.textContent = agent.metric || '';
+      ref.title.textContent =
+        agent.nome + ' — ' + (STATE_LABEL[agent.state] || agent.state) + '\n' +
+        agent.faz + '\n' +
+        'Cadência: ' + formatCadence(agent.every_min) + '\n' +
+        'Última rodada: ' + formatAgo(agent.age_min) +
+        (agent.last ? ' (' + agent.last + ')' : '') +
+        (agent.every_min ? '\nPróxima: ' + formatIn(agent.next_in_min) : '');
+    });
+
+    if (selectedId && !findAgent(selectedId)) selectedId = null;
+    renderSummary();
+    renderList();
+    renderDetail();
+  }
+
+  function fetchSnapshot() {
+    return fetch('/api/agents', { cache: 'no-store' })
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
+      .then(applySnapshot)
+      .catch(function (err) {
+        console.error('[painel] falha ao buscar snapshot:', err);
+      });
+  }
+
+  function runNow(agent) {
+    if (running.has(agent.id)) return;
+    running.add(agent.id);
+    renderDetail();
+
+    fetch(agent.run.url, {
+      method: agent.run.method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(agent.run.body || {})
+    })
+      .then(function (res) {
+        return res.json().then(function (data) { return { res: res, data: data }; });
+      })
+      .then(function (out) {
+        running.delete(agent.id);
+        return fetchSnapshot().then(function () {
+          var note = document.getElementById('ap-run-note');
+          if (!note) return;
+          // Falha do servidor é falha na tela. Nada de "concluído" em cima de erro.
+          if (!out.res.ok || out.data.ok === false) {
+            note.setAttribute('data-tone', 'error');
+            note.textContent = 'Falhou: ' + (out.data.erro || out.data.agent && out.data.agent.detail || ('HTTP ' + out.res.status));
+          } else {
+            note.setAttribute('data-tone', 'ok');
+            note.textContent = 'Rodada concluída.';
+          }
+        });
+      })
+      .catch(function (err) {
+        running.delete(agent.id);
+        renderDetail();
+        var note = document.getElementById('ap-run-note');
+        if (note) {
+          note.setAttribute('data-tone', 'error');
+          note.textContent = 'Falhou: ' + err.message;
+        }
+      });
+  }
+
+  /* ---------- animação ---------- */
+
+  function emitPeriod(agent) {
+    if (agent.every_min == null) return 1.2;
+    return Math.max(0.9, Math.min(3.5, 0.6 + agent.every_min * 0.08));
+  }
+
+  function frame(ts) {
+    rafId = requestAnimationFrame(frame);
+    if (!snap || !built) return;
+
+    var dt = lastFrame ? Math.min(0.05, (ts - lastFrame) / 1000) : 0.016;
+    lastFrame = ts;
+    var t = ts / 1000;
+
+    // Núcleo: anéis em velocidades e sentidos diferentes + respiração.
+    ringAngles[0] += dt * 14;
+    ringAngles[1] -= dt * 9;
+    ringAngles[2] += dt * 5;
+    coreEls.rings.forEach(function (ring, i) {
+      ring.setAttribute('transform', 'rotate(' + ringAngles[i].toFixed(2) + ')');
+    });
+    coreEls.hex.setAttribute('opacity', (0.78 + 0.22 * Math.sin(t * 1.2)).toFixed(3));
+
+    coreFlash = Math.max(0, coreFlash - dt * 2.6);
+    coreEls.flash.setAttribute('opacity', (coreFlash * 0.7).toFixed(3));
+    coreEls.flash.setAttribute('r', (46 + (1 - coreFlash) * 14).toFixed(1));
+
+    snap.agents.forEach(function (agent) {
+      var ref = nodes.get(agent.id);
+      if (!ref) return;
+
+      var phase = livePhase(agent);
+
+      if (agent.every_min == null) {
+        // Contínuo não tem ciclo para mostrar: um arco curto girando devagar
+        // diz apenas "vivo".
+        ref.arc.setAttribute('stroke-dasharray', (ARC_C * 0.18).toFixed(2) + ' ' + ARC_C.toFixed(2));
+        ref.arc.setAttribute('transform', 'rotate(' + ((t * 42) % 360).toFixed(2) + ')');
+        ref.arc.setAttribute('opacity', agent.state === 'ok' ? '0.9' : '0.45');
+      } else {
+        var shown = phase == null ? 0 : phase;
+        ref.arc.setAttribute('stroke-dasharray', (ARC_C * shown).toFixed(2) + ' ' + ARC_C.toFixed(2));
+        ref.arc.setAttribute('transform', 'rotate(-90)');
+        // Passando de 92% do ciclo, o arco pulsa: a rodada está chegando.
+        ref.arc.setAttribute('opacity',
+          shown > 0.92 ? (0.55 + 0.45 * Math.sin(t * 7)).toFixed(3) : '1');
+      }
+
+      // Erro salta aos olhos: amplitude bem maior que a respiração normal.
+      var scale = agent.state === 'error'
+        ? 1 + 0.16 * Math.sin(t * 5.5)
+        : 1 + 0.02 * Math.sin(t * 1.6 + ref.x);
+      ref.hexWrap.setAttribute('transform', 'scale(' + scale.toFixed(4) + ')');
+
+      // Só agente saudável alimenta o núcleo.
+      if (agent.state === 'ok') {
+        ref.emitAcc += dt;
+        var period = emitPeriod(agent);
+        if (ref.emitAcc >= period) {
+          ref.emitAcc = 0;
+          var dot = el('circle', { class: 'ap-pulse', r: 2.6, cx: ref.x, cy: ref.y });
+          coreEls.pulseLayer.appendChild(dot);
+          pulses.push({ el: dot, x: ref.x, y: ref.y, t: 0 });
+        }
+      } else {
+        ref.emitAcc = 0;
+      }
+    });
+
+    for (var i = pulses.length - 1; i >= 0; i--) {
+      var p = pulses[i];
+      p.t += dt * 0.55;
+      if (p.t >= 1) {
+        p.el.remove();
+        pulses.splice(i, 1);
+        coreFlash = 1;
+        continue;
+      }
+      var e = p.t * p.t; // acelera na chegada
+      p.el.setAttribute('cx', (p.x + (CX - p.x) * e).toFixed(2));
+      p.el.setAttribute('cy', (p.y + (CY - p.y) * e).toFixed(2));
+      p.el.setAttribute('opacity', (0.35 + 0.65 * p.t).toFixed(3));
+    }
+
+    // Os textos de "há X min" precisam correr, mas não a 60 fps.
+    clockTick += dt;
+    if (clockTick >= 1) {
+      clockTick = 0;
+      if (selectedId) renderDetail();
+    }
+  }
+
+  /* ---------- disciplina de rAF e polling (armadilha 6) ---------- */
+
+  function start() {
+    if (!rafId) {
+      lastFrame = 0;
+      rafId = requestAnimationFrame(frame);
+    }
+    if (!pollTimer) {
+      pollTimer = setInterval(fetchSnapshot, POLL_MS);
+    }
+  }
+
+  function stop() {
+    if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = 0; }
+    // Pulsos em voo não sobrevivem à pausa — voltariam teleportados.
+    pulses.forEach(function (p) { p.el.remove(); });
+    pulses = [];
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') {
+      fetchSnapshot();
+      start();
+    } else {
+      stop();
+    }
+  });
+
+  fetchSnapshot().then(function () {
+    if (document.visibilityState === 'visible') start();
+  });
+})();
+</script>
+</body>
+</html>
