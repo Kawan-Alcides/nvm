@@ -1,32 +1,20 @@
 """
-Leitura do estado dos agentes em disco e montagem do snapshot do painel.
+Monta o snapshot do painel a partir das sondas de prova de vida.
 
-Este é o núcleo portátil: é o único arquivo que precisa mudar quando a prova
-de vida sair de arquivos JSON e for para um banco. Nada aqui faz rede, nada
-chama IA, e nada tem efeito colateral — é leitura pura.
+Leitura pura: nenhuma função aqui escreve, executa agente ou faz rede — exceto
+`write_state`, que existe só para os agentes demo registrarem a própria rodada.
 """
 
-import errno
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
-from registry import (
-  AGENTS,
-  HEARTBEAT_STALE_MIN,
-  STALE_FACTOR,
-  STATE_DIR,
-  is_configured,
-)
+import probes
+from registry import HEARTBEAT_STALE_MIN, STALE_FACTOR, is_configured
 
-# Ordem de gravidade, do mais grave para o mais inofensivo. Usada para eleger
-# o "pior" agente do resumo.
-SEVERITY = {
-  'error': 4,
-  'stale': 3,
-  'idle': 2,
-  'ok': 1,
-  'off': 0,
-}
+# Ordem de gravidade, do mais grave para o mais inofensivo. Elege o "pior"
+# agente do resumo.
+SEVERITY = {'error': 4, 'stale': 3, 'idle': 2, 'ok': 1, 'off': 0}
 
 
 def utc_now():
@@ -34,7 +22,8 @@ def utc_now():
 
 
 def write_state(agent, result, when=None):
-  """Grava a prova de vida de um agente. Chamado pelo agendador e pelo botão."""
+  """Grava a prova de vida de um agente demo. Não é usado no modo declarativo —
+  lá quem grava é o próprio agente, que é o ponto."""
   when = when or utc_now()
   payload = {
     'last_run': when.isoformat(),
@@ -42,63 +31,16 @@ def write_state(agent, result, when=None):
     'metric': result.get('metric'),
     'detail': result.get('detail'),
   }
-  STATE_DIR.mkdir(parents=True, exist_ok=True)
-  # Grava em arquivo temporário e move: um leitor concorrente nunca vê JSON
-  # pela metade.
-  tmp = agent.state_path.with_suffix('.tmp')
+  path = Path(agent.liveness['arquivo'])
+  path.parent.mkdir(parents=True, exist_ok=True)
+  # Grava em temporário e move: um leitor concorrente nunca vê JSON pela metade.
+  tmp = path.with_suffix('.tmp')
   # O newline final não é estética: o eclint do projeto varre `tools/` inteiro
   # e não respeita .gitignore, então o estado gravado em runtime também precisa
   # obedecer ao .editorconfig.
   tmp.write_text(json.dumps(payload, ensure_ascii=False) + '\n', encoding='utf-8')
-  tmp.replace(agent.state_path)
+  tmp.replace(path)
   return payload
-
-
-class StateReadError(Exception):
-  """A prova de vida existe mas não pôde ser lida. Isso é erro, não vazio."""
-
-
-def read_state(agent):
-  """
-  Lê a prova de vida de um agente.
-
-  Devolve None SÓ quando o arquivo comprovadamente não existe (instalação
-  nova). Qualquer outra falha — permissão negada, disco fora, JSON corrompido —
-  vira StateReadError e sobe como estado de erro no painel.
-
-  Repare que não há um `if path.exists()` aqui de propósito: aquele teste
-  devolve False para permissão negada também, e o painel passaria a mentir
-  "nunca rodou" quando na verdade não conseguiu ler.
-  """
-  try:
-    raw = agent.state_path.read_text(encoding='utf-8')
-  except FileNotFoundError:
-    return None
-  except OSError as exc:
-    if exc.errno == errno.ENOENT:
-      return None
-    raise StateReadError('não foi possível ler %s: %s' % (agent.arquivo, exc.strerror))
-
-  try:
-    parsed = json.loads(raw)
-  except ValueError as exc:
-    raise StateReadError('estado corrompido em %s: %s' % (agent.arquivo, exc))
-
-  if not isinstance(parsed, dict):
-    raise StateReadError('estado inesperado em %s: não é um objeto' % agent.arquivo)
-  return parsed
-
-
-def _parse_timestamp(value):
-  if not value:
-    return None
-  try:
-    parsed = datetime.fromisoformat(value)
-  except (TypeError, ValueError):
-    raise StateReadError('timestamp ilegível: %r' % (value,))
-  if parsed.tzinfo is None:
-    parsed = parsed.replace(tzinfo=timezone.utc)
-  return parsed
 
 
 def describe(agent, now=None):
@@ -118,12 +60,20 @@ def describe(agent, now=None):
     'state': 'idle',
     'metric': None,
     'detail': None,
-    'run': agent.run,
+    # O front só precisa saber que existe um disparo e onde bater. O comando
+    # real nunca sai do servidor.
+    'run': ({
+      'url': '/api/agents/%s/run' % agent.id,
+      'method': 'POST',
+      'body': {'action': 'run'},
+    } if agent.tem_disparo else None),
     'arquivo': agent.arquivo,
+    'origem': agent.origem,
+    'fonte': agent.liveness.get('tipo'),
   }
 
-  # Agente desligado de propósito não é alarme, e nem se tenta ler o estado
-  # dele — a config de que depende simplesmente não existe.
+  # Agente desligado de propósito não é alarme, e nem se tenta sondar: a config
+  # de que depende simplesmente não existe.
   if not is_configured(agent):
     entry['state'] = 'off'
     entry['detail'] = 'Desligado: %s não está configurada.' % agent.requires_env
@@ -131,42 +81,31 @@ def describe(agent, now=None):
     return entry
 
   try:
-    state = read_state(agent)
-  except StateReadError as exc:
+    vida = probes.run_probe(agent.liveness)
+  except probes.ProbeError as exc:
     entry['state'] = 'error'
     entry['detail'] = str(exc)
     return entry
+
+  entry['metric'] = vida.metric
+  entry['detail'] = vida.detail
 
   # Ausência de dado nunca é "tudo certo": é "nunca rodou".
-  if state is None:
-    entry['detail'] = 'Nenhuma rodada registrada até agora.'
+  if vida.last is None:
+    entry['detail'] = vida.detail or 'Nenhuma rodada registrada até agora.'
     return entry
 
-  entry['metric'] = state.get('metric')
-  entry['detail'] = state.get('detail')
-
-  try:
-    last = _parse_timestamp(state.get('last_run'))
-  except StateReadError as exc:
-    entry['state'] = 'error'
-    entry['detail'] = str(exc)
-    return entry
-
-  if last is None:
-    entry['detail'] = state.get('detail') or 'Nenhuma rodada registrada até agora.'
-    return entry
-
-  age_min = max(0.0, (now - last).total_seconds() / 60.0)
-  entry['last'] = last.isoformat()
+  age_min = max(0.0, (now - vida.last).total_seconds() / 60.0)
+  entry['last'] = vida.last.isoformat()
   entry['age_min'] = round(age_min, 2)
 
   if agent.every_min:
     entry['phase'] = round(min(1.0, age_min / agent.every_min), 4)
     entry['next_in_min'] = round(max(0.0, agent.every_min - age_min), 2)
 
-  # A falha registrada pelo próprio agente ganha precedência sobre o relógio:
-  # um agente que rodou agora e falhou está em erro, não "em dia".
-  if not state.get('ok', True):
+  # A falha registrada pelo próprio agente tem precedência sobre o relógio: um
+  # agente que rodou agora e falhou está em erro, não "em dia".
+  if not vida.ok:
     entry['state'] = 'error'
     return entry
 
@@ -177,15 +116,14 @@ def describe(agent, now=None):
   return entry
 
 
-def build(now=None):
+def build(agents, modo='demo', now=None):
   """Monta o snapshot completo, no contrato consumido pelo front."""
   now = now or utc_now()
-  agents = [describe(agent, now) for agent in AGENTS]
+  entradas = [describe(a, now) for a in agents]
 
   counts = {'ok': 0, 'atencao': 0, 'off': 0}
-  worst = None
-  worst_rank = -1
-  for entry in agents:
+  worst, worst_rank = None, -1
+  for entry in entradas:
     state = entry['state']
     if state == 'ok':
       counts['ok'] += 1
@@ -193,19 +131,18 @@ def build(now=None):
       counts['off'] += 1
     else:
       counts['atencao'] += 1
-
     rank = SEVERITY.get(state, 0)
     if rank > worst_rank:
-      worst_rank = rank
-      worst = entry['id']
+      worst_rank, worst = rank, entry['id']
 
   return {
     'ok': True,
     'now': now.isoformat(),
+    'modo': modo,
     'stale_factor': STALE_FACTOR,
-    'agents': agents,
+    'agents': entradas,
     'resumo': {
-      'total': len(agents),
+      'total': len(entradas),
       'ok': counts['ok'],
       'atencao': counts['atencao'],
       'off': counts['off'],

@@ -1,0 +1,122 @@
+{
+  "_leia": [
+    "Exemplo de configuração multi-árvore. Copie para agents.json e edite.",
+    "Os agentes aqui são ILUSTRATIVOS: os caminhos seguem o layout citado",
+    "(~/.claude, ~/.agents, ~/.aiox-core, ~/EXODIA-LAB) mas os nomes e cadências",
+    "são placeholders. Rode inventory_scan.py antes de preencher isto a sério.",
+    "",
+    "CUIDADO: run.cmd é superfície executável. O que estiver aqui roda com os",
+    "privilégios de quem subiu o servidor. Trate este arquivo como um script seu.",
+    "",
+    "Sondas disponíveis, da melhor para a pior fonte:",
+    "  json_field     - campo de timestamp num arquivo de estado (ideal)",
+    "  sqlite         - coluna num banco (consulta somente leitura)",
+    "  artifact_field - timestamp dentro do artefato produzido",
+    "  mtime          - data de modificação (mente se outra coisa tocar o arquivo)",
+    "  log_regex      - linha de log (frágil; só sem alternativa)"
+  ],
+
+  "agents": [
+    {
+      "id": "inbox-triage",
+      "nome": "TRIAGEM DE INBOX",
+      "icon": "📬",
+      "faz": "Classifica e arquiva e-mails que chegam, sem eu olhar.",
+      "every_min": 30,
+      "origem": "~/.agents",
+      "liveness": {
+        "tipo": "json_field",
+        "arquivo": "~/.agents/inbox-triage/state.json",
+        "campo": "last_run",
+        "ok_campo": "ok",
+        "metric_campo": "resumo.processados",
+        "detail_campo": "resumo.nota"
+      },
+      "run": {
+        "cmd": ["python3", "~/.agents/inbox-triage/run.py", "--once"],
+        "cwd": "~/.agents/inbox-triage",
+        "timeout_s": 180
+      }
+    },
+
+    {
+      "id": "aiox-queue",
+      "nome": "FILA AIOX",
+      "icon": "⚙️",
+      "faz": "Consome a fila de tarefas do núcleo e registra cada rodada no banco.",
+      "every_min": 5,
+      "origem": "~/.aiox-core",
+      "liveness": {
+        "tipo": "sqlite",
+        "arquivo": "~/.aiox-core/state/jobs.db",
+        "consulta": "SELECT last_run_at, processed_count, last_error FROM jobs WHERE name = ? ORDER BY last_run_at DESC LIMIT 1",
+        "parametros": ["queue-worker"]
+      }
+    },
+
+    {
+      "id": "content-scheduler",
+      "nome": "AGENDA DE CONTEÚDO",
+      "icon": "🗓",
+      "faz": "Gera e agenda as publicações do dia seguinte.",
+      "every_min": 1440,
+      "origem": "~/EXODIA-LAB",
+      "liveness": {
+        "tipo": "artifact_field",
+        "arquivo": "~/EXODIA-LAB/output/schedule.json",
+        "campo": "generated_at",
+        "metric_campo": "count"
+      },
+      "run": {
+        "cmd": ["make", "schedule"],
+        "cwd": "~/EXODIA-LAB",
+        "timeout_s": 600
+      }
+    },
+
+    {
+      "id": "cache-rebuild",
+      "nome": "RECONSTRUÇÃO DE CACHE",
+      "icon": "🧊",
+      "faz": "Reconstrói o índice vetorial quando os documentos mudam.",
+      "every_min": 360,
+      "origem": "~/.aiox-core",
+      "liveness": {
+        "tipo": "mtime",
+        "arquivo": "~/.aiox-core/cache/index.bin"
+      }
+    },
+
+    {
+      "id": "mcp-bridge",
+      "nome": "PONTE MCP",
+      "icon": "🌉",
+      "faz": "Mantém a conexão com os servidores MCP viva e reconecta na queda.",
+      "every_min": null,
+      "origem": "~/.claude",
+      "liveness": {
+        "tipo": "log_regex",
+        "arquivo": "~/.claude/logs/bridge.log",
+        "padrao": "(?P<ts>\\d{4}-\\d{2}-\\d{2}T[\\d:.+-]+)\\s+heartbeat",
+        "padrao_erro": "ERROR|disconnected"
+      }
+    },
+
+    {
+      "id": "nightly-backup",
+      "nome": "BACKUP NOTURNO",
+      "icon": "💾",
+      "faz": "Empacota e envia o backup das bases locais.",
+      "every_min": 1440,
+      "origem": "launchd",
+      "requires_env": "EXODIA_BACKUP_TARGET",
+      "liveness": {
+        "tipo": "json_field",
+        "arquivo": "~/.aiox-core/state/backup.json",
+        "campo": "last_run",
+        "ok_campo": "ok",
+        "metric_campo": "size_human"
+      }
+    }
+  ]
+}
