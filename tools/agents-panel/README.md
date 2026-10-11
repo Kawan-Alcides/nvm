@@ -117,6 +117,36 @@ Calculada no servidor, nunca no front.
 
 O fator 2,5× mora numa constante nomeada em `registry.py`.
 
+## Testes
+
+```sh
+python3 tools/agents-panel/test_panel.py
+```
+
+42 testes, só biblioteca padrão, sem rede e sem servidor no ar. Rodam em
+centésimos de segundo.
+
+O que eles protegem não é o desenho — é a honestidade do painel. Quase toda
+asserção existe porque a alternativa seria o painel mentir: pintar de verde o
+que não conseguiu ler, chamar de "nunca rodou" o que não teve permissão de
+abrir, ou dizer "concluído" sobre um comando que falhou.
+
+A suíte foi conferida por mutação: alterando o código de propósito (fazer
+`mtime` aceitar diretório, erro de leitura virar vazio, agente desligado virar
+alarme, `id` repetido ser aceito, `cmd` como string passar, o fator de atraso
+virar 99) e confirmando que cada mutação quebra algum teste. Dois buracos
+apareceram assim e foram fechados:
+
+- O teste dos formatos de timestamp passava **por acidente** no Python 3.11,
+  onde o `fromisoformat` nativo já aceita tudo e o fallback nunca é chamado.
+  Como a máquina que importa é o macOS com 3.9, o fallback agora é exercitado
+  direto, e um `fromisoformat` propositalmente estrito põe a ligação entre os
+  dois sob teste em qualquer versão.
+- O teste do limite de atraso derivava o limite da própria constante, então
+  conferia o mecanismo e nunca o valor. Agora há também uma faixa de sanidade:
+  o fator continua ajustável, mas não pode virar um número que faça o painel
+  nunca acusar nada.
+
 ## Levantando o inventário (Fase 1)
 
 O painel só vale o que o inventário vale. `inventory_scan.py` faz essa varredura
