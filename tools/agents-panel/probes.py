@@ -18,7 +18,7 @@ faria o painel mentir "nunca rodou".
 import json
 import re
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from stat import S_ISREG
 
@@ -64,11 +64,13 @@ def parse_timestamp(value, campo='timestamp'):
 
   texto = value.strip()
   # 'Z' é válido em ISO-8601 mas o fromisoformat de Python < 3.11 não aceita.
-  if texto.endswith('Z'):
+  if texto.endswith('Z') or texto.endswith('z'):
     texto = texto[:-1] + '+00:00'
   try:
     parsed = datetime.fromisoformat(texto)
   except ValueError:
+    parsed = _parse_iso_tolerante(texto)
+  if parsed is None:
     # Último recurso: string que é só um número.
     try:
       return parse_timestamp(float(texto), campo)
@@ -77,6 +79,36 @@ def parse_timestamp(value, campo='timestamp'):
   if parsed.tzinfo is None:
     parsed = parsed.replace(tzinfo=timezone.utc)
   return parsed
+
+
+# O fromisoformat do Python 3.9 — que é o que vem no macOS — só aceita
+# exatamente o formato que o isoformat() produz: rejeita precisão fracionária
+# diferente de 3 ou 6 dígitos e fusos abreviados como '+00'. Agentes de verdade
+# gravam timestamp em todo tipo de precisão, e um saudável virando `error` por
+# causa disso é o falso alarme que destrói a confiança no painel.
+_ISO = re.compile(
+  r'^(\d{4})-(\d{2})-(\d{2})[Tt ]'
+  r'(\d{2}):(\d{2})(?::(\d{2}))?'
+  r'(?:[.,](\d+))?'
+  r'\s*(?:(?P<sinal>[+-])(?P<oh>\d{2}):?(?P<om>\d{2})?)?$')
+
+
+def _parse_iso_tolerante(texto):
+  m = _ISO.match(texto)
+  if m is None:
+    return None
+  ano, mes, dia, hora, minuto, seg, frac = m.group(1, 2, 3, 4, 5, 6, 7)
+  # Normaliza a fração para microssegundos, truncando o que passar disso.
+  micro = int((frac or '').ljust(6, '0')[:6] or 0)
+  fuso = timezone.utc
+  if m.group('sinal'):
+    offset = timedelta(hours=int(m.group('oh')), minutes=int(m.group('om') or 0))
+    fuso = timezone(-offset if m.group('sinal') == '-' else offset)
+  try:
+    return datetime(int(ano), int(mes), int(dia), int(hora), int(minuto),
+                    int(seg or 0), micro, fuso)
+  except ValueError:
+    return None
 
 
 def _dig(data, caminho):
