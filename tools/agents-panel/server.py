@@ -79,6 +79,7 @@ SEED_AGES_MIN = {
 AGENTS = []
 AGENTS_BY_ID = {}
 MODO = 'demo'
+SISTEMA = 'NVM'
 
 _run_lock = threading.Lock()
 
@@ -206,7 +207,7 @@ class Handler(BaseHTTPRequestHandler):
 
     if route == '/api/agents':
       # LEITURA PURA. Nenhum agente é executado aqui, em nenhuma hipótese.
-      self._send_json(snapshot.build(AGENTS, MODO))
+      self._send_json(snapshot.build(AGENTS, MODO, SISTEMA))
       return
 
     if route.startswith('/api/agents/'):
@@ -272,7 +273,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-  global AGENTS, AGENTS_BY_ID, MODO
+  global AGENTS, AGENTS_BY_ID, MODO, SISTEMA
 
   parser = argparse.ArgumentParser(description='Painel de Agentes')
   parser.add_argument('--config', help='caminho do agents.json')
@@ -286,7 +287,7 @@ def main():
   args = parser.parse_args()
 
   try:
-    AGENTS, MODO = load_agents(args.config)
+    AGENTS, MODO, SISTEMA = load_agents(args.config)
   except ConfigError as exc:
     # Falha alto: um painel que ignora metade do próprio inventário é pior que
     # um painel que não sobe.

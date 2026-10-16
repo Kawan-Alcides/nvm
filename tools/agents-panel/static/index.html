@@ -52,6 +52,9 @@
     font-size: 12.5px;
   }
   .ap-banner strong { color: var(--ap-text); }
+  .ap-banner code { font-size: 11.5px; color: var(--ap-text); }
+  /* Demo é ressalva (âmbar); config é ficha técnica (neutro). */
+  .ap-banner[data-modo="config"] { border-left-color: var(--ap-core); }
 
   .ap-grid {
     display: grid;
@@ -220,14 +223,9 @@
     <p>Constelação viva dos processos autônomos — a animação é o dado.</p>
   </header>
 
-  <p class="ap-banner">
-    <strong>Protótipo.</strong> Este repositório (nvm) tem <strong>um</strong> processo
-    agendado de verdade: a varredura semanal do CodeQL
-    (<code>.github/workflows/codeql-analysis.yml</code>, <code>cron '0 17 * * 4'</code>).
-    Os demais agentes têm cadência <strong>simulada</strong>, mas fazem trabalho local
-    real sobre este repositório e gravam prova de vida real em disco — nenhuma métrica
-    exibida é inventada.
-  </p>
+  <!-- Preenchido conforme o `modo` do snapshot. Deixar texto fixo aqui faria o
+  painel anunciar "cadências simuladas" sobre agentes reais de alguém. -->
+  <p class="ap-banner" id="ap-banner" hidden></p>
 
   <div class="ap-grid">
     <div class="ap-stage">
@@ -262,6 +260,17 @@
   var NODE_R = 21, ARC_R = 30;
   var ARC_C = 2 * Math.PI * ARC_R;
   var POLL_MS = 15000;
+
+  /* As duas últimas carregam ressalva: `mtime` mente se outra coisa tocar o
+  arquivo, e log rotacionado faz o agente parecer morto sem nada ter acontecido.
+  Quem olha o painel merece saber qual está em jogo. */
+  var FONTE_LABEL = {
+    json_field: 'campo em arquivo de estado',
+    sqlite: 'coluna no banco',
+    artifact_field: 'timestamp no artefato produzido',
+    mtime: 'data de modificação do arquivo',
+    log_regex: 'linha de log'
+  };
 
   var STATE_LABEL = {
     ok: 'em dia',
@@ -379,7 +388,10 @@
     });
     coreEls.hex = el('polygon', { class: 'ap-core-hex', points: hexPoints(40) });
     g.appendChild(coreEls.hex);
-    g.appendChild(el('text', { class: 'ap-core-label' })).textContent = 'NVM';
+    // O centro da constelação é o sistema de quem está olhando, não o nosso.
+    coreEls.label = el('text', { class: 'ap-core-label' });
+    coreEls.label.textContent = snap.sistema || 'AGENTES';
+    g.appendChild(coreEls.label);
     svg.appendChild(g);
   }
 
@@ -409,6 +421,11 @@
       g.appendChild(title);
 
       var body = el('g', { transform: 'translate(' + x.toFixed(1) + ',' + y.toFixed(1) + ')' });
+      // Alvo de clique invisível. Um <g> de SVG só recebe clique onde há
+      // pintura, então sem isto o miolo do nó é buraco — ruim no mouse e pior
+      // no toque, onde o hexágono tem poucos pixels. `transparent` recebe
+      // evento; `none` não.
+      body.appendChild(el('circle', { class: 'ap-hit', r: ARC_R + 8, fill: 'transparent' }));
       body.appendChild(el('circle', { class: 'ap-arc-bg', r: ARC_R }));
       var arc = el('circle', { class: 'ap-arc', r: ARC_R, transform: 'rotate(-90)' });
       body.appendChild(arc);
@@ -445,6 +462,52 @@
   }
 
   /* ---------- painel lateral ---------- */
+
+  /* O banner descreve a procedência do que está na tela. No modo demo ele
+  precisa dizer alto que as cadências são simuladas; no modo declarativo dizer
+  isso seria mentira, então ele vira ficha técnica da configuração. */
+  function renderBanner() {
+    var el = document.getElementById('ap-banner');
+    el.textContent = '';
+    el.hidden = false;
+
+    function forte(txt) {
+      var b = document.createElement('strong');
+      b.textContent = txt;
+      return b;
+    }
+    function cod(txt) {
+      var c = document.createElement('code');
+      c.textContent = txt;
+      return c;
+    }
+
+    if (snap.modo === 'demo') {
+      el.setAttribute('data-modo', 'demo');
+      el.appendChild(forte('Conjunto de demonstração.'));
+      el.appendChild(document.createTextNode(
+        ' Este repositório tem um processo agendado de verdade: a varredura ' +
+        'semanal do CodeQL ('));
+      el.appendChild(cod("cron '0 17 * * 4'"));
+      el.appendChild(document.createTextNode('). Os demais agentes têm cadência '));
+      el.appendChild(forte('simulada'));
+      el.appendChild(document.createTextNode(
+        ', mas fazem trabalho local real e gravam prova de vida real em disco — ' +
+        'nenhuma métrica exibida é inventada. Aponte o servidor para um '));
+      el.appendChild(cod('agents.json'));
+      el.appendChild(document.createTextNode(' para ver os seus agentes.'));
+      return;
+    }
+
+    el.setAttribute('data-modo', 'config');
+    var origens = {};
+    snap.agents.forEach(function (a) { if (a.origem) origens[a.origem] = 1; });
+    var n = Object.keys(origens).length;
+    el.appendChild(forte(snap.agents.length + ' agentes'));
+    el.appendChild(document.createTextNode(
+      ' lidos de ' + (n ? n + (n === 1 ? ' origem' : ' origens') : 'uma origem') +
+      '. Atrasado = ' + num(snap.stale_factor, 1) + '× a cadência.'));
+  }
 
   function renderSummary() {
     var r = snap.resumo;
@@ -538,7 +601,11 @@
     if (agent.every_min) row(dl, 'Próxima', formatIn(liveNextIn(agent)));
     if (agent.metric) row(dl, 'Resultado', agent.metric);
     if (agent.detail) row(dl, 'Nota', agent.detail);
+    // Com agentes vindo de árvores diferentes, de onde cada um veio e por qual
+    // sonda ele é lido fazem parte de saber se dá para confiar no que se vê.
+    if (agent.origem) row(dl, 'Origem', agent.origem);
     row(dl, 'Estado mora em', agent.arquivo);
+    if (agent.fonte) row(dl, 'Lido via', FONTE_LABEL[agent.fonte] || agent.fonte);
     detailEl.appendChild(dl);
 
     // O ISO cru fica no atributo, não na cara do usuário.
@@ -613,6 +680,7 @@
     });
 
     if (selectedId && !findAgent(selectedId)) selectedId = null;
+    renderBanner();
     renderSummary();
     renderList();
     renderDetail();

@@ -19,6 +19,7 @@ import hashlib
 import json
 import os
 import re
+from collections import namedtuple
 from pathlib import Path
 
 PANEL_DIR = Path(__file__).resolve().parent
@@ -108,6 +109,14 @@ def _validate(entrada, indice):
                         % entrada['id'])
 
 
+Config = namedtuple('Config', 'agents sistema')
+
+# Como o núcleo da constelação se chama quando a config não diz. "NVM" só faz
+# sentido no conjunto demo; num painel dos agentes de outra pessoa, o centro é
+# o sistema dela.
+SISTEMA_PADRAO = 'AGENTES'
+
+
 def load_config(path=None):
   """Lê `agents.json`. Devolve None se não existir — aí vale o modo demo."""
   path = Path(path or CONFIG_PATH)
@@ -150,7 +159,11 @@ def load_config(path=None):
       auto=False,
       origem=entrada.get('origem'),
     ))
-  return agentes
+  sistema = SISTEMA_PADRAO
+  if isinstance(data, dict) and data.get('sistema'):
+    # Vai para dentro do SVG como texto; um nome quilométrico estoura o núcleo.
+    sistema = str(data['sistema'])[:14]
+  return Config(agentes, sistema)
 
 
 # --------------------------------------------------------------------------
@@ -308,9 +321,9 @@ def demo_agents():
 
 def load_agents(path=None):
   """Config declarativa quando existir; conjunto demo caso contrário."""
-  agentes = load_config(path)
-  if agentes is None:
-    return demo_agents(), 'demo'
-  if not agentes:
+  cfg = load_config(path)
+  if cfg is None:
+    return demo_agents(), 'demo', 'NVM'
+  if not cfg.agents:
     raise ConfigError('a configuração não declara nenhum agente')
-  return agentes, 'config'
+  return cfg.agents, 'config', cfg.sistema

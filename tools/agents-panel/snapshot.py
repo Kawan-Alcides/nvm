@@ -116,7 +116,7 @@ def describe(agent, now=None):
   return entry
 
 
-def build(agents, modo='demo', now=None):
+def build(agents, modo='demo', sistema='AGENTES', now=None):
   """Monta o snapshot completo, no contrato consumido pelo front."""
   now = now or utc_now()
   entradas = [describe(a, now) for a in agents]
@@ -139,6 +139,7 @@ def build(agents, modo='demo', now=None):
     'ok': True,
     'now': now.isoformat(),
     'modo': modo,
+    'sistema': sistema,
     'stale_factor': STALE_FACTOR,
     'agents': entradas,
     'resumo': {

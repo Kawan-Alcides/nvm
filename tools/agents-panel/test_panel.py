@@ -380,7 +380,8 @@ class TestValidacaoDeConfig(TempDirTest):
   def carrega(self, texto):
     caminho = self.dir / 'agents.json'
     caminho.write_text(texto, encoding='utf-8')
-    return load_config(caminho)
+    cfg = load_config(caminho)
+    return None if cfg is None else cfg.agents
 
   CASOS_RUINS = {
     'falta faz': '{"agents":[{"id":"a","liveness":{"tipo":"mtime","arquivo":"/x"}}]}',
@@ -409,9 +410,39 @@ class TestValidacaoDeConfig(TempDirTest):
 
   def test_config_ausente_cai_no_modo_demo(self):
     self.assertIsNone(load_config(self.dir / 'nao-existe.json'))
-    agentes, modo = registry.load_agents(self.dir / 'nao-existe.json')
+    agentes, modo, sistema = registry.load_agents(self.dir / 'nao-existe.json')
     self.assertEqual(modo, 'demo')
     self.assertTrue(agentes)
+    self.assertEqual(sistema, 'NVM')
+
+  def test_sistema_padrao_nao_herda_o_nome_do_demo(self):
+    """
+    O rótulo do núcleo vai para dentro do SVG. Herdar 'NVM' num painel dos
+    agentes de outra pessoa faria a constelação anunciar um sistema que não é
+    o dela — o mesmo tipo de mentira do banner fixo.
+    """
+    caminho = self.dir / 'agents.json'
+    caminho.write_text(
+      '{"agents":[{"id":"a","faz":"x",'
+      '"liveness":{"tipo":"mtime","arquivo":"/x"}}]}', encoding='utf-8')
+    _, modo, sistema = registry.load_agents(caminho)
+    self.assertEqual(modo, 'config')
+    self.assertEqual(sistema, registry.SISTEMA_PADRAO)
+    self.assertNotEqual(sistema, 'NVM')
+
+  def test_sistema_declarado_e_usado_e_truncado(self):
+    caminho = self.dir / 'agents.json'
+    caminho.write_text(
+      '{"sistema":"EXODIA LAB SISTEMA GIGANTE DEMAIS",'
+      '"agents":[{"id":"a","faz":"x",'
+      '"liveness":{"tipo":"mtime","arquivo":"/x"}}]}', encoding='utf-8')
+    _, _, sistema = registry.load_agents(caminho)
+    self.assertTrue(sistema.startswith('EXODIA LAB'))
+    self.assertLessEqual(len(sistema), 14)
+
+  def test_sistema_entra_no_snapshot(self):
+    d = snapshot.build([], 'config', 'MEU SISTEMA')
+    self.assertEqual(d['sistema'], 'MEU SISTEMA')
 
   def test_nome_ausente_usa_o_id(self):
     a = self.carrega(
@@ -430,9 +461,9 @@ class TestValidacaoDeConfig(TempDirTest):
 
 class TestConjuntoDemo(unittest.TestCase):
   def test_demo_monta_e_todos_os_estados_sao_validos(self):
-    agentes, modo = registry.load_agents(Path('/caminho/que/nao/existe.json'))
+    agentes, modo, sistema = registry.load_agents(Path('/caminho/que/nao/existe.json'))
     self.assertEqual(modo, 'demo')
-    d = snapshot.build(agentes, modo)
+    d = snapshot.build(agentes, modo, sistema)
     validos = set(snapshot.SEVERITY)
     for entrada in d['agents']:
       self.assertIn(entrada['state'], validos)
@@ -441,7 +472,7 @@ class TestConjuntoDemo(unittest.TestCase):
   def test_codeql_nao_pode_ser_disparado_daqui(self):
     # Quem o agenda é o GitHub. Semeá-lo com um timestamp plausível seria
     # inventar uma rodada que nunca aconteceu.
-    agentes, _ = registry.load_agents(Path('/caminho/que/nao/existe.json'))
+    agentes, _, _ = registry.load_agents(Path('/caminho/que/nao/existe.json'))
     codeql = [a for a in agentes if a.id == 'codeql-scan'][0]
     self.assertFalse(codeql.tem_disparo)
     self.assertIsNone(snapshot.describe(codeql)['run'])

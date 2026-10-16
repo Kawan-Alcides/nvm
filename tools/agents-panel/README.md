@@ -21,6 +21,10 @@ cp tools/agents-panel/agents.example.json tools/agents-panel/agents.json
 python3 tools/agents-panel/server.py
 ```
 
+O campo opcional `sistema` no topo do `agents.json` vira o rótulo do núcleo da
+constelação (até 14 caracteres). Sem ele o centro diz `AGENTES` — nunca o nome
+do conjunto demo, porque o centro é o seu sistema, não o nosso.
+
 **Demo** — sem `agents.json`, sobe um conjunto embutido que faz trabalho local
 real sobre este repositório. Serve para ver o painel funcionando e para a suíte
 de validação ter em que rodar.
@@ -120,11 +124,19 @@ O fator 2,5× mora numa constante nomeada em `registry.py`.
 ## Testes
 
 ```sh
-python3 tools/agents-panel/test_panel.py
+python3 tools/agents-panel/test_panel.py        # lógica, sem navegador
+node tools/agents-panel/test_browser.js         # a tela (precisa de Playwright)
 ```
 
-42 testes, só biblioteca padrão, sem rede e sem servidor no ar. Rodam em
-centésimos de segundo.
+45 testes de lógica, só biblioteca padrão, sem rede e sem servidor no ar. Rodam
+em centésimos de segundo.
+
+O `test_browser.js` cobre o que só existe na tela — a animação ser função do
+dado, a idade correr entre fetches, a seleção nos dois sentidos, o botão
+executar de verdade, a animação parar com a aba escondida, o celular continuar
+legível — e exige os servidores no ar. O Playwright **não** é dependência do
+projeto; instale por fora, ou pule este arquivo. Variáveis: `PANEL_DEMO`,
+`PANEL_CONFIG` (vazio pula o modo declarativo), `PANEL_SHOTS`.
 
 O que eles protegem não é o desenho — é a honestidade do painel. Quase toda
 asserção existe porque a alternativa seria o painel mentir: pintar de verde o
