@@ -1,0 +1,5 @@
+# Estado gravado em tempo de execução pelos agentes. É prova de vida local,
+# não código — cada máquina tem a sua.
+state/
+__pycache__/
+*.pyc
